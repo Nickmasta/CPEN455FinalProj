@@ -22,10 +22,16 @@ import argparse
 # You should modify this sample function to get the generated images from your model
 # You should save the generated images to the gen_data_dir, which is fixed as 'samples'
 sample_op = lambda x : sample_from_discretized_mix_logistic(x, 5)
+def get_label(model, model_input, device):
+        # Forward pass through model
+        with torch.no_grad():
+        logits = model(model_input)  # [batch_size, num_classes]
+        # Get predicted class (argmax)
+        pred_labels = torch.argmax(logits, dim=1)  # [batch_size]
+return pred_labels
 def my_sample(model, gen_data_dir, sample_batch_size = 25, obs = (3,32,32), sample_op = sample_op):
-    for label in range(4): #There are 4 classes 
+for label in range(4): #There are 4 classes 
         print(f"Label: {label}")
-        class_labels = torch.full((sample_batch_size,), label, device=device)
         #generate images for each label, each label has 25 images
         sample_t = model(sample_batch_size, obs, sample_op, class_labels)
         sample_t = rescaling_inv(sample_t)
@@ -50,7 +56,7 @@ if __name__ == "__main__":
 
     #TODO: Begin of your code
     #Load your model and generate images in the gen_data_dir, feel free to modify the model
-    model = PixelCNN(nr_resnet=1, nr_filters=40, input_channels=3, nr_logistic_mix=5)
+    model = PixelCNN(nr_resnet=3, nr_filters=100, input_channels=3, nr_logistic_mix=10, num_classes=10)
     model = model.to(device)
     model = model.eval()
     #End of your code
