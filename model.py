@@ -102,7 +102,7 @@ class PixelCNN(nn.Module):
         self.init_padding = None
 
 
-    def forward(self, x, class_labels=None sample=False):
+    def forward(self, x, class_labels=None, sample=False):
         #Adjusted the parameters passed into forward pass
         # similar as done in the tf repo :
         if self.init_padding is not sample:
