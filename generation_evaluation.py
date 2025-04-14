@@ -25,9 +25,9 @@ sample_op = lambda x : sample_from_discretized_mix_logistic(x, 5)
 def get_label(model, model_input, device):
         # Forward pass through model
         with torch.no_grad():
-        logits = model(model_input)  # [batch_size, num_classes]
-        # Get predicted class (argmax)
-        pred_labels = torch.argmax(logits, dim=1)  # [batch_size]
+                logits = model(model_input)  # [batch_size, num_classes]
+                # Get predicted class (argmax)
+                pred_labels = torch.argmax(logits, dim=1)  # [batch_size]
 return pred_labels
 def my_sample(model, gen_data_dir, sample_batch_size = 25, obs = (3,32,32), sample_op = sample_op):
 for label in range(4): #There are 4 classes 
