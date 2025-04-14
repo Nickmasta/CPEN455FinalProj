@@ -27,7 +27,7 @@ def my_sample(model, gen_data_dir, sample_batch_size = 25, obs = (3,32,32), samp
         print(f"Label: {label}")
         class_labels = torch.full((sample_batch_size,), label, device=device)
         #generate images for each label, each label has 25 images
-        sample_t = model.sample(sample_batch_size, obs, sample_op, class_labels)
+        sample_t = model(sample_batch_size, obs, sample_op, class_labels)
         sample_t = rescaling_inv(sample_t)
         save_images(sample_t, os.path.join(gen_data_dir), label=label)
     pass
