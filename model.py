@@ -52,13 +52,18 @@ class PixelCNNLayer_down(nn.Module):
 
 class PixelCNN(nn.Module):
     def __init__(self, nr_resnet=5, nr_filters=80, nr_logistic_mix=10,
-                    resnet_nonlinearity='concat_elu', input_channels=3):
+                    resnet_nonlinearity='concat_elu', input_channels=3, num_classes=10):
+        # Added the number of classes in the definition 
         super(PixelCNN, self).__init__()
         if resnet_nonlinearity == 'concat_elu' :
             self.resnet_nonlinearity = lambda x : concat_elu(x)
         else :
             raise Exception('right now only concat elu is supported as resnet nonlinearity.')
-
+        # Adding the following information   
+        self.num_classes = num_classes  # Pass this as __init__ argument
+        self.embedding_dim = nr_filters  # Match network dim
+        self.class_embedding = nn.Embedding(num_classes, self.embedding_dim) ## adding our classification information
+                        
         self.nr_filters = nr_filters
         self.input_channels = input_channels
         self.nr_logistic_mix = nr_logistic_mix
@@ -97,7 +102,8 @@ class PixelCNN(nn.Module):
         self.init_padding = None
 
 
-    def forward(self, x, sample=False):
+    def forward(self, x, class_labels=None sample=False):
+        #Adjusted the parameters passed into forward pass
         # similar as done in the tf repo :
         if self.init_padding is not sample:
             xs = [int(y) for y in x.size()]
@@ -112,8 +118,14 @@ class PixelCNN(nn.Module):
 
         ###      UP PASS    ###
         x = x if sample else torch.cat((x, self.init_padding), 1)
-        u_list  = [self.u_init(x)]
-        ul_list = [self.ul_init[0](x) + self.ul_init[1](x)]
+        # My adjustments to the forward pass, the if adds the classification info
+        if class_labels  is not None:
+            h_class = self.class_embedding(class_labels).view(-1, self.embedding_dim, 1, 1)
+        else:
+            h_class = torch.zeros(x.size(0), self.embedding_dim, 1, 1).to(x.device)
+        # Adjusting sent tensors
+        u_list  = [self.u_init(x) + h_class]
+        ul_list = [self.ul_init[0](x) + self.ul_init[1](x) + h_class]
         for i in range(3):
             # resnet block
             u_out, ul_out = self.up_layers[i](u_list[-1], ul_list[-1])
