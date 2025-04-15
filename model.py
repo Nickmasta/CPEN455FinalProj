@@ -129,8 +129,8 @@ class PixelCNN(nn.Module):
         #else:
         #    h_class = torch.zeros(x.size(0), self.embedding_dim, 1, 1).to(x.device)
         # Adjusting sent tensors
-        u_list  = [self.u_init(x) + h_class]
-        ul_list = [self.ul_init[0](x) + self.ul_init[1](x) + h_class]
+        u_list  = [self.u_init(x)]
+        ul_list = [self.ul_init[0](x) + self.ul_init[1](x)]
         # Fuse after the first up layer
         if self.num_classes is not None and class_labels is not None:
             embedded_class = self.class_embedding(class_labels)
