@@ -22,7 +22,7 @@ from bidict import bidict
 import csv
 import pandas as pd
 NUM_CLASSES = len(my_bidict)
-my1_bidict = bidict({'Class0': 0, 
+my_bidict = bidict({'Class0': 0, 
                     'Class1': 1,
                     'Class2': 2,
                     'Class3': 3,
@@ -40,7 +40,7 @@ def get_label(model, model_input, device):
         img_batch = img.unsqueeze(0)
         for i in range(NUM_CLASSES):
             label_tensor = torch.tensor([i],dtype=torch.long,device=device)
-            model_output = model(img_batch, labels=label_tensor, sample=False)
+            model_output = model(img_batch, class_labels=label_tensor, sample=False)
             loss = dlml(img_batch, model_output)
             loss_list.append(loss.item())
         answer.append(np.argmin(loss_list))
@@ -137,7 +137,7 @@ if __name__ == '__main__':
     model = model.to(device)
     #Attention: the path of the model is fixed to './models/conditional_pixelcnn.pth'
     #You should save your model to this path
-    model_path = os.path.join(os.path.dirname(__file__), 'models/conditional_pixelcnn.pth')
+    model_path = os.path.join(os.path.dirname(__file__), 'models/pcnn_cpen455_from_scratch_19.pth')
     if os.path.exists(model_path):
         model.load_state_dict(torch.load(model_path))
         print('model parameters loaded')
