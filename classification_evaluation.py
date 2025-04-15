@@ -32,7 +32,7 @@ def get_label(model, model_input, device):
         img_batch = img.unsqueeze(0)
         for i in range(NUM_CLASSES):
             label_tensor = torch.tensor([i],dtype=torch.long,device=device)
-            model_output = model(img_batch, labels=label_tensor, sample=False)
+            model_output = model(img_batch, class_labels=label_tensor, sample=False)
             loss = dlml(img_batch, model_output)
             loss_list.append(loss.item())
         answer.append(np.argmin(loss_list))
