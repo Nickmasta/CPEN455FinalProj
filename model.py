@@ -52,7 +52,7 @@ class PixelCNNLayer_down(nn.Module):
 
 class PixelCNN(nn.Module):
     def __init__(self, nr_resnet=5, nr_filters=80, nr_logistic_mix=10,
-                    resnet_nonlinearity='concat_elu', input_channels=3, num_classes=4):
+                    resnet_nonlinearity='concat_elu', input_channels=3, num_classes=4, embedding_dim=32):
         # Added the number of classes in the definition 
         super(PixelCNN, self).__init__()
         if resnet_nonlinearity == 'concat_elu' :
@@ -61,7 +61,7 @@ class PixelCNN(nn.Module):
             raise Exception('right now only concat elu is supported as resnet nonlinearity.')
         # Adding the following information   
         self.num_classes = num_classes  # Pass this as __init__ argument
-        self.embedding_dim = nr_filters  # Match network dim
+        self.embedding_dim = embedding_dim # Match network dim
         self.class_embedding = nn.Embedding(num_classes, self.embedding_dim) ## adding our classification information
                         
         self.nr_filters = nr_filters
