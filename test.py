@@ -130,7 +130,7 @@ if __name__ == '__main__':
     #You should replace the random classifier with your trained model
     #model = random_classifier(NUM_CLASSES)
     input_channels=3
-    model = PixelCNN(nr_resnet = 3, nr_filters = 80, input_channels = 3, nr_logistic_mix = 10, num_classes = 4, embedding_dim = 16)
+    model = PixelCNN(nr_resnet = 4, nr_filters = 100, input_channels = 3, nr_logistic_mix = 10, num_classes = 4, embedding_dim = 16)
     
     #End of your code
     
