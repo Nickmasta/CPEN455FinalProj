@@ -24,8 +24,19 @@ NUM_CLASSES = len(my_bidict)
 def get_label(model, model_input, device):
     # Write your code here, replace the random classifier with your trained model
     # and return the predicted label, which is a tensor of shape (batch_size,)
-    answer = model(model_input, device)
-    return answer
+    # DLML Compares real data/distribution and the synthesized and we will find the loss
+    dlml = lambda real_data, gen_data : discretized_mix_logistic_loss(real_data, gen_data)  
+    answer = []
+    for img in model_input
+        lost_list=[]
+        img_batch = img.unsqueeze(0)
+        for i in range(NUM_CLASSES):
+            label_tensor = torch.tensor([i],dtype=torch.long,device=device)
+            model_output = model(img_batch, labels=label_tensor, sample=False)
+            loss = dlml(img_batch, model_output)
+            loss_list.append(loss.item())
+        answer.append(np.argmin(loss_list))
+    return torch.tensor(answer).to(device)
 # End of your code
 
 def classifier(model, data_loader, device):
@@ -68,7 +79,7 @@ if __name__ == '__main__':
 
     #TODO:Begin of your code
     #You should replace the random classifier with your trained model
-    model = random_classifier(NUM_CLASSES)
+    model = PixelCNN(nr_resnet = 3, nr_filters = 100, input_channels = 3, nr_logistic_mix = 20, embedding_dim = 32)
     #End of your code
     
     model = model.to(device)
