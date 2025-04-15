@@ -31,21 +31,20 @@ my1_bidict = bidict({'Class0': 0,
 #TODO: Begin of your code
 def get_label(model, model_input, device):
     # Write your code here, replace the random classifier with your trained model
-    loss_op   = lambda real, fake : discretized_mix_logistic_loss(real, fake)
-    answers=[]
-    for image in model_input:
-        lost_list=[]
-        image_batch = image.unsqueeze(0)
-        for i in range(NUM_CLASSES):
-            label_tensor=torch.tensor([i],dtype=torch.long, device=device)
-            model_output=model(image_batch,labels=label_tensor, sample=False)
-            lost=loss_op(image_batch,model_output)
-            lost_list.append(lost.item())
-        answers.append(np.argmin(lost_list))        
-    #model_output = model(model_input)
     # and return the predicted label, which is a tensor of shape (batch_size,)
-    #answer = model(model_input, device)
-    return torch.tensor(answers).to(device)
+    # DLML Compares real data/distribution and the synthesized and we will find the loss
+    dlml = lambda real_data, gen_data : discretized_mix_logistic_loss(real_data, gen_data)  
+    answer = []
+    for img in model_input:
+        loss_list=[]
+        img_batch = img.unsqueeze(0)
+        for i in range(NUM_CLASSES):
+            label_tensor = torch.tensor([i],dtype=torch.long,device=device)
+            model_output = model(img_batch, class_labels=label_tensor, sample=False)
+            loss = dlml(img_batch, model_output)
+            loss_list.append(loss.item())
+        answer.append(np.argmin(loss_list))
+    return torch.tensor(answer).to(device)
 # End of your code
 
 # def classifier(model, data_loader, device):
@@ -131,8 +130,7 @@ if __name__ == '__main__':
     #You should replace the random classifier with your trained model
     #model = random_classifier(NUM_CLASSES)
     input_channels=3
-    model = PixelCNN(nr_resnet=3, nr_filters=100, 
-                input_channels=input_channels, nr_logistic_mix=20, embedding_dim=32)
+    model = PixelCNN(nr_resnet = 3, nr_filters = 80, input_channels = 3, nr_logistic_mix = 5, num_classes = NUM_CLASSES, embedding_dim = 32)
     
     #End of your code
     
