@@ -69,10 +69,18 @@ class PixelCNN(nn.Module):
         self.right_shift_pad = nn.ZeroPad2d((1, 0, 0, 0))
         self.down_shift_pad  = nn.ZeroPad2d((0, 0, 1, 0))
 
-        if num_classes is not None:
-            self.class_embedding = nn.Embedding(num_classes, embedding_dim) #Like what we did in early fusion earlier
+        #if num_classes is not None:
+        #    self.class_embedding = nn.Embedding(num_classes, embedding_dim) #Like what we did in early fusion earlier
             # Project the embedding to the number of filters for concatenation
-            self.embed_projection = nn.Linear(embedding_dim, nr_filters)
+        #    self.embed_projection = nn.Linear(embedding_dim, nr_filters)
+        # --- Start: Added for Conditioning ---
+        self.label_embedding = nn.Embedding(num_classes, self.embedding_dim)
+        # Add a projection layer if embedding_dim is different from nr_filters
+        if self.embedding_dim != self.nr_filters:
+             self.embedding_projection = nn.Linear(self.embedding_dim, self.nr_filters)
+        else:
+             self.embedding_projection = nn.Identity() # Use Identity if dims match
+        # --- End: Added for Conditioning ---
             
         down_nr_resnet = [nr_resnet] + [nr_resnet + 1] * 2
         self.down_layers = nn.ModuleList([PixelCNNLayer_down(down_nr_resnet[i], nr_filters,
@@ -106,70 +114,69 @@ class PixelCNN(nn.Module):
         self.init_padding = None
 
 
-    def forward(self, x, class_labels=None, sample=False):
-        #Adjusted the parameters passed into forward pass
-        # similar as done in the tf repo :
-        if self.init_padding is not sample:
-            xs = [int(y) for y in x.size()]
-            padding = Variable(torch.ones(xs[0], 1, xs[2], xs[3]), requires_grad=False)
-            self.init_padding = padding.cuda() if x.is_cuda else padding
+def forward(self, x, class_labels=None, sample=False):
+    # Handle padding initialization
+    if self.init_padding is None or self.init_padding.shape != x.shape[:2] + (1,) + x.shape[2:]:
+        xs = [int(y) for y in x.size()]
+        padding = torch.ones(xs[0], 1, xs[2], xs[3], device=x.device)
+        self.init_padding = padding
 
-        if sample :
-            xs = [int(y) for y in x.size()]
-            padding = Variable(torch.ones(xs[0], 1, xs[2], xs[3]), requires_grad=False)
-            padding = padding.cuda() if x.is_cuda else padding
-            x = torch.cat((x, padding), 1)
+    if sample:
+        xs = [int(y) for y in x.size()]
+        padding = torch.ones(xs[0], 1, xs[2], xs[3], device=x.device)
+        x = torch.cat((x, padding), 1)
 
-        ###      UP PASS    ###
-        x = x if sample else torch.cat((x, self.init_padding), 1)
-        # My adjustments to the forward pass, the if adds the classification info
-        #if class_labels  is not None:
-        #    h_class = self.class_embedding(class_labels).view(-1, self.embedding_dim, 1, 1)
-        #else:
-        #    h_class = torch.zeros(x.size(0), self.embedding_dim, 1, 1).to(x.device)
-        # Adjusting sent tensors
-        u_list  = [self.u_init(x)]
-        ul_list = [self.ul_init[0](x) + self.ul_init[1](x)]
-        # Fuse after the first up layer
-        if self.num_classes is not None and class_labels is not None:
-            embedded_class = self.class_embedding(class_labels)
-            projected_embedding = self.embed_projection(embedded_class)
-            #Reshaping
-            b, c, h, w = u_list[-1].size()
-            reshaped_embedding = projected_embedding.view(b, self.nr_filters, 1, 1).expand(b, self.nr_filters, h, w)
-            # Update the tensors
-            u_list[-1] = torch.cat((u_list[-1], reshaped_embedding), dim=1)
-            ul_list[-1] = torch.cat((ul_list[-1], reshaped_embedding), dim=1)
+    ### UP PASS ###
+    x = x if sample else torch.cat((x, self.init_padding), 1)
+    
+    # Get label embeddings
+    if class_labels is not None:
+        label_emb = self.label_embedding(class_labels)  # B x E
+        proj_emb = self.embedding_projection(label_emb)  # B x nr_filters
+        proj_emb_spatial = proj_emb.unsqueeze(-1).unsqueeze(-1)  # B x nr_filters x 1 x 1
+    else:
+        # Handle case when no labels are provided
+        proj_emb_spatial = torch.zeros(x.size(0), self.nr_filters, 1, 1, device=x.device)
+
+    u_list = [self.u_init(x)]
+    ul_list = [self.ul_init[0](x) + self.ul_init[1](x)]
+    
+    for i in range(3):
+        # resnet block
+        u_out, ul_out = self.up_layers[i](u_list[-1], ul_list[-1])
+        u_list += u_out
+        ul_list += ul_out
+
+        if i != 2:
+            # downscale (only twice)
+            u_list += [self.downsize_u_stream[i](u_list[-1])]
+            ul_list += [self.downsize_ul_stream[i](ul_list[-1])]
+
+    ### DOWN PASS ###
+    u = u_list.pop()
+    ul = ul_list.pop()
+
+    for i in range(3):
+        # resnet block with conditioning
+        H, W = u.size(2), u.size(3)
+        current_emb = proj_emb_spatial.expand(-1, -1, H, W)
         
-        for i in range(3):
-            # resnet block
-            u_out, ul_out = self.up_layers[i](u_list[-1], ul_list[-1])
-            u_list  += u_out
-            ul_list += ul_out
+        # Apply conditioning before the resnet blocks
+        u_cond = u + current_emb
+        ul_cond = ul + current_emb
+        
+        u, ul = self.down_layers[i](u_cond, ul_cond, u_list, ul_list)
 
-            if i != 2:
-                # downscale (only twice)
-                u_list  += [self.downsize_u_stream[i](u_list[-1])]
-                ul_list += [self.downsize_ul_stream[i](ul_list[-1])]
+        # upscale (only twice)
+        if i != 2:
+            u = self.upsize_u_stream[i](u)
+            ul = self.upsize_ul_stream[i](ul)
 
-        ###    DOWN PASS    ###
-        u  = u_list.pop()
-        ul = ul_list.pop()
+    x_out = self.nin_out(F.elu(ul))
 
-        for i in range(3):
-            # resnet block
-            u, ul = self.down_layers[i](u, ul, u_list, ul_list)
+    assert len(u_list) == len(ul_list) == 0
 
-            # upscale (only twice)
-            if i != 2 :
-                u  = self.upsize_u_stream[i](u)
-                ul = self.upsize_ul_stream[i](ul)
-
-        x_out = self.nin_out(F.elu(ul))
-
-        assert len(u_list) == len(ul_list) == 0, pdb.set_trace()
-
-        return x_out
+    return x_out
     
     
 class random_classifier(nn.Module):
