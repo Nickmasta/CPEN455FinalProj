@@ -123,13 +123,12 @@ if __name__ == '__main__':
                                                             mode = args.mode, 
                                                             transform=ds_transforms), 
                                              batch_size=args.batch_size, 
-                                             shuffle=True, 
+                                             shuffle=False, 
                                              **kwargs)
 
     #TODO:Begin of your code
     #You should replace the random classifier with your trained model
     #model = random_classifier(NUM_CLASSES)
-    input_channels=3
     model = PixelCNN(nr_resnet = 4, nr_filters = 100, input_channels = 3, nr_logistic_mix = 10, num_classes = 4, embedding_dim = 16)
     
     #End of your code
@@ -182,4 +181,4 @@ if __name__ == '__main__':
         print(f"An unexpected error occurred during CSV writing: {e}")
 
         
-       
+  
