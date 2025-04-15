@@ -114,69 +114,69 @@ class PixelCNN(nn.Module):
         self.init_padding = None
 
 
-def forward(self, x, class_labels=None, sample=False):
-    # Handle padding initialization
-    if self.init_padding is None or self.init_padding.shape != x.shape[:2] + (1,) + x.shape[2:]:
-        xs = [int(y) for y in x.size()]
-        padding = torch.ones(xs[0], 1, xs[2], xs[3], device=x.device)
-        self.init_padding = padding
-
-    if sample:
-        xs = [int(y) for y in x.size()]
-        padding = torch.ones(xs[0], 1, xs[2], xs[3], device=x.device)
-        x = torch.cat((x, padding), 1)
-
-    ### UP PASS ###
-    x = x if sample else torch.cat((x, self.init_padding), 1)
+    def forward(self, x, class_labels=None, sample=False):
+        # Handle padding initialization
+        if self.init_padding is None or self.init_padding.shape != x.shape[:2] + (1,) + x.shape[2:]:
+            xs = [int(y) for y in x.size()]
+            padding = torch.ones(xs[0], 1, xs[2], xs[3], device=x.device)
+            self.init_padding = padding
     
-    # Get label embeddings
-    if class_labels is not None:
-        label_emb = self.label_embedding(class_labels)  # B x E
-        proj_emb = self.embedding_projection(label_emb)  # B x nr_filters
-        proj_emb_spatial = proj_emb.unsqueeze(-1).unsqueeze(-1)  # B x nr_filters x 1 x 1
-    else:
-        # Handle case when no labels are provided
-        proj_emb_spatial = torch.zeros(x.size(0), self.nr_filters, 1, 1, device=x.device)
+        if sample:
+            xs = [int(y) for y in x.size()]
+            padding = torch.ones(xs[0], 1, xs[2], xs[3], device=x.device)
+            x = torch.cat((x, padding), 1)
 
-    u_list = [self.u_init(x)]
-    ul_list = [self.ul_init[0](x) + self.ul_init[1](x)]
+        ### UP PASS ###
+        x = x if sample else torch.cat((x, self.init_padding), 1)
     
-    for i in range(3):
-        # resnet block
-        u_out, ul_out = self.up_layers[i](u_list[-1], ul_list[-1])
-        u_list += u_out
-        ul_list += ul_out
+        # Get label embeddings
+        if class_labels is not None:
+            label_emb = self.label_embedding(class_labels)  # B x E
+            proj_emb = self.embedding_projection(label_emb)  # B x nr_filters
+            proj_emb_spatial = proj_emb.unsqueeze(-1).unsqueeze(-1)  # B x nr_filters x 1 x 1
+        else:
+            # Handle case when no labels are provided
+            proj_emb_spatial = torch.zeros(x.size(0), self.nr_filters, 1, 1, device=x.device)
 
-        if i != 2:
-            # downscale (only twice)
-            u_list += [self.downsize_u_stream[i](u_list[-1])]
-            ul_list += [self.downsize_ul_stream[i](ul_list[-1])]
+        u_list = [self.u_init(x)]
+        ul_list = [self.ul_init[0](x) + self.ul_init[1](x)]
+    
+        for i in range(3):
+            # resnet block
+            u_out, ul_out = self.up_layers[i](u_list[-1], ul_list[-1])
+            u_list += u_out
+            ul_list += ul_out
 
-    ### DOWN PASS ###
-    u = u_list.pop()
-    ul = ul_list.pop()
+            if i != 2:
+                # downscale (only twice)
+                u_list += [self.downsize_u_stream[i](u_list[-1])]
+                ul_list += [self.downsize_ul_stream[i](ul_list[-1])]
 
-    for i in range(3):
-        # resnet block with conditioning
-        H, W = u.size(2), u.size(3)
-        current_emb = proj_emb_spatial.expand(-1, -1, H, W)
+        ### DOWN PASS ###
+        u = u_list.pop()
+        ul = ul_list.pop()
+
+        for i in range(3):
+            # resnet block with conditioning
+            H, W = u.size(2), u.size(3)
+            current_emb = proj_emb_spatial.expand(-1, -1, H, W)
         
-        # Apply conditioning before the resnet blocks
-        u_cond = u + current_emb
-        ul_cond = ul + current_emb
+            # Apply conditioning before the resnet blocks
+            u_cond = u + current_emb
+            ul_cond = ul + current_emb
         
-        u, ul = self.down_layers[i](u_cond, ul_cond, u_list, ul_list)
+            u, ul = self.down_layers[i](u_cond, ul_cond, u_list, ul_list)
 
-        # upscale (only twice)
-        if i != 2:
-            u = self.upsize_u_stream[i](u)
-            ul = self.upsize_ul_stream[i](ul)
+            # upscale (only twice)
+            if i != 2:
+                u = self.upsize_u_stream[i](u)
+                ul = self.upsize_ul_stream[i](ul)
 
-    x_out = self.nin_out(F.elu(ul))
+        x_out = self.nin_out(F.elu(ul))
 
-    assert len(u_list) == len(ul_list) == 0
+        assert len(u_list) == len(ul_list) == 0
 
-    return x_out
+        return x_out
     
     
 class random_classifier(nn.Module):
