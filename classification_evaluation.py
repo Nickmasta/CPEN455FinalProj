@@ -27,7 +27,7 @@ def get_label(model, model_input, device):
     # DLML Compares real data/distribution and the synthesized and we will find the loss
     dlml = lambda real_data, gen_data : discretized_mix_logistic_loss(real_data, gen_data)  
     answer = []
-    for img in model_input
+    for img in model_input:
         lost_list=[]
         img_batch = img.unsqueeze(0)
         for i in range(NUM_CLASSES):
