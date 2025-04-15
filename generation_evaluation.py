@@ -25,8 +25,10 @@ sample_op = lambda x : sample_from_discretized_mix_logistic(x, 5)
 def my_sample(model, gen_data_dir, sample_batch_size = 25, obs = (3,32,32), sample_op = sample_op):
         for label in my_bidict: #There are 4 classes 
                 print(f"Label: {label}")
+                label_index = my_bedict[label]
+                labels = torch.full((sample_batch_size,), label_index, dtype = torch.long, device=device)
                 #generate images for each label, each label has 25 images
-                sample_t = sample(sample_batch_size, obs, sample_op, class_labels)
+                sample_t = sample(model, sample_batch_size, obs, sample_op, labels = labels)
                 sample_t = rescaling_inv(sample_t)
                 save_images(sample_t, os.path.join(gen_data_dir), label=label)
         pass
@@ -51,6 +53,7 @@ if __name__ == "__main__":
     #Load your model and generate images in the gen_data_dir, feel free to modify the model
     model = PixelCNN(nr_resnet=3, nr_filters=100, input_channels=3, nr_logistic_mix=10, num_classes=10)
     model = model.to(device)
+    model.load_state_dict(torch.load('models/pcnn_cpen455_from_scratch_99.pth))
     model = model.eval()
     #End of your code
     
