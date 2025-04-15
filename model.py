@@ -51,97 +51,99 @@ class PixelCNNLayer_down(nn.Module):
 
 
 class PixelCNN(nn.Module):
-    def __init__(self, nr_resnet=3, nr_filters=80, nr_logistic_mix=10, resnet_nonlinearity='concat_elu', input_channels=3, num_classes=4, embedding_dim=16):
-        # Added the number of classes in the definition as well as embedding dimension
-        super(PixelCNN, self).__init__()
-        if resnet_nonlinearity == 'concat_elu' :
-            self.resnet_nonlinearity = lambda x : concat_elu(x)
-        else :
+    def __init__(self, nr_resnet=4, nr_filters=100, nr_logistic_mix=10,
+                 resnet_nonlinearity='concat_elu', input_channels=3, num_classes=4, embedding_dim=16):
+        super(ConditionalPixelCNN, self).__init__()
+        if resnet_nonlinearity == 'concat_elu':
+            self.resnet_nonlinearity = lambda x: concat_elu(x)
+        else:
             raise Exception('right now only concat elu is supported as resnet nonlinearity.')
-        # Adding the following information   
-        self.num_classes = num_classes  # Pass this as __init__ argument
-        self.embedding_dim = embedding_dim  # Match network dim
-        #self.class_embedding = nn.Embedding(num_classes, self.embedding_dim) ## adding our classification information
-                        
+
         self.nr_filters = nr_filters
         self.input_channels = input_channels
         self.nr_logistic_mix = nr_logistic_mix
+        self.num_classes = num_classes
+        
+        # Early fusion: embed class information to be combined with initial input
+        self.class_embedding = nn.Embedding(num_classes, nr_filters)
+        
+        # Middle fusion: embeddings to be used in up and down layers
+        self.middle_embedding = nn.Embedding(num_classes, nr_filters)
+        
         self.right_shift_pad = nn.ZeroPad2d((1, 0, 0, 0))
-        self.down_shift_pad  = nn.ZeroPad2d((0, 0, 1, 0))
+        self.down_shift_pad = nn.ZeroPad2d((0, 0, 1, 0))
 
-        #if num_classes is not None:
-        #    self.class_embedding = nn.Embedding(num_classes, embedding_dim) #Like what we did in early fusion earlier
-            # Project the embedding to the number of filters for concatenation
-        #    self.embed_projection = nn.Linear(embedding_dim, nr_filters)
-        # --- Start: Added for Conditioning ---
-        self.label_embedding = nn.Embedding(num_classes, self.embedding_dim)
-        # Add a projection layer if embedding_dim is different from nr_filters
-        if self.embedding_dim != self.nr_filters:
-             self.embedding_projection = nn.Linear(self.embedding_dim, self.nr_filters)
-        else:
-             self.embedding_projection = nn.Identity() # Use Identity if dims match
-        # --- End: Added for Conditioning ---
-            
         down_nr_resnet = [nr_resnet] + [nr_resnet + 1] * 2
         self.down_layers = nn.ModuleList([PixelCNNLayer_down(down_nr_resnet[i], nr_filters,
                                                 self.resnet_nonlinearity) for i in range(3)])
 
-        self.up_layers   = nn.ModuleList([PixelCNNLayer_up(nr_resnet, nr_filters,
+        self.up_layers = nn.ModuleList([PixelCNNLayer_up(nr_resnet, nr_filters,
                                                 self.resnet_nonlinearity) for _ in range(3)])
 
-        self.downsize_u_stream  = nn.ModuleList([down_shifted_conv2d(nr_filters, nr_filters,
-                                                    stride=(2,2)) for _ in range(2)])
+        self.downsize_u_stream = nn.ModuleList([down_shifted_conv2d(nr_filters, nr_filters,
+                                                    stride=(2, 2)) for _ in range(2)])
 
         self.downsize_ul_stream = nn.ModuleList([down_right_shifted_conv2d(nr_filters,
-                                                    nr_filters, stride=(2,2)) for _ in range(2)])
+                                                    nr_filters, stride=(2, 2)) for _ in range(2)])
 
-        self.upsize_u_stream  = nn.ModuleList([down_shifted_deconv2d(nr_filters, nr_filters,
-                                                    stride=(2,2)) for _ in range(2)])
+        self.upsize_u_stream = nn.ModuleList([down_shifted_deconv2d(nr_filters, nr_filters,
+                                                    stride=(2, 2)) for _ in range(2)])
 
         self.upsize_ul_stream = nn.ModuleList([down_right_shifted_deconv2d(nr_filters,
-                                                    nr_filters, stride=(2,2)) for _ in range(2)])
+                                                    nr_filters, stride=(2, 2)) for _ in range(2)])
 
-        self.u_init = down_shifted_conv2d(input_channels + 1, nr_filters, filter_size=(2,3),
-                        shift_output_down=True)
+        # Modified initial layers to include early fusion
+        self.u_init = down_shifted_conv2d(input_channels + 1 + 1, nr_filters, filter_size=(2, 3),
+                        shift_output_down=True)  # +1 for class channel
 
-        self.ul_init = nn.ModuleList([down_shifted_conv2d(input_channels + 1, nr_filters,
-                                            filter_size=(1,3), shift_output_down=True),
-                                       down_right_shifted_conv2d(input_channels + 1, nr_filters,
-                                            filter_size=(2,1), shift_output_right=True)])
+        self.ul_init = nn.ModuleList([
+            down_shifted_conv2d(input_channels + 1 + 1, nr_filters,  # +1 for class channel
+                               filter_size=(1, 3), shift_output_down=True),
+            down_right_shifted_conv2d(input_channels + 1 + 1, nr_filters,  # +1 for class channel
+                                    filter_size=(2, 1), shift_output_right=True)
+        ])
 
         num_mix = 3 if self.input_channels == 1 else 10
         self.nin_out = nin(nr_filters, num_mix * nr_logistic_mix)
         self.init_padding = None
 
-
-    def forward(self, x, class_labels=None, sample=False):
-        # Handle padding initialization
-        if self.init_padding is None or self.init_padding.shape != x.shape[:2] + (1,) + x.shape[2:]:
+    def forward(self, x, y, sample=False):
+        # y is the class label for conditioning
+        
+        # similar as done in the tf repo :
+        if self.init_padding is not sample:
             xs = [int(y) for y in x.size()]
             padding = torch.ones(xs[0], 1, xs[2], xs[3], device=x.device)
             self.init_padding = padding
-    
+
         if sample:
             xs = [int(y) for y in x.size()]
             padding = torch.ones(xs[0], 1, xs[2], xs[3], device=x.device)
             x = torch.cat((x, padding), 1)
 
-        ### UP PASS ###
-        x = x if sample else torch.cat((x, self.init_padding), 1)
-    
-        # Get label embeddings
-        if class_labels is not None:
-            label_emb = self.label_embedding(class_labels)  # B x E
-            proj_emb = self.embedding_projection(label_emb)  # B x nr_filters
-            proj_emb_spatial = proj_emb.unsqueeze(-1).unsqueeze(-1)  # B x nr_filters x 1 x 1
-        else:
-            # Handle case when no labels are provided
-            proj_emb_spatial = torch.zeros(x.size(0), self.nr_filters, 1, 1, device=x.device)
+        ### Prepare class conditioning ###
+        # Early fusion: expand class embedding to spatial dimensions and concatenate
+        y_early = self.class_embedding(y)  # [B, nr_filters]
+        y_early = y_early.view(y_early.size(0), y_early.size(1), 1, 1)  # [B, nr_filters, 1, 1]
+        y_early = y_early.expand(-1, -1, x.size(2), x.size(3))  # [B, nr_filters, H, W]
+        
+        # Middle fusion: prepare embeddings for later use
+        y_middle = self.middle_embedding(y)  # [B, nr_filters]
+        y_middle = y_middle.view(y_middle.size(0), y_middle.size(1), 1, 1)  # [B, nr_filters, 1, 1]
 
+        ###      UP PASS    ###
+        x = x if sample else torch.cat((x, self.init_padding), 1)
+        # Early fusion: concatenate class information with input
+        x = torch.cat((x, y_early[:, :1, :, :]), dim=1)  # add as additional channel
+        
         u_list = [self.u_init(x)]
         ul_list = [self.ul_init[0](x) + self.ul_init[1](x)]
-    
+        
         for i in range(3):
+            # Middle fusion: add class information before each up layer
+            u_list[-1] = u_list[-1] + y_middle.expand_as(u_list[-1])
+            ul_list[-1] = ul_list[-1] + y_middle.expand_as(ul_list[-1])
+            
             # resnet block
             u_out, ul_out = self.up_layers[i](u_list[-1], ul_list[-1])
             u_list += u_out
@@ -152,20 +154,17 @@ class PixelCNN(nn.Module):
                 u_list += [self.downsize_u_stream[i](u_list[-1])]
                 ul_list += [self.downsize_ul_stream[i](ul_list[-1])]
 
-        ### DOWN PASS ###
+        ###    DOWN PASS    ###
         u = u_list.pop()
         ul = ul_list.pop()
 
         for i in range(3):
-            # resnet block with conditioning
-            H, W = u.size(2), u.size(3)
-            current_emb = proj_emb_spatial.expand(-1, -1, H, W)
-        
-            # Apply conditioning before the resnet blocks
-            u_cond = u + current_emb
-            ul_cond = ul + current_emb
-        
-            u, ul = self.down_layers[i](u_cond, ul_cond, u_list, ul_list)
+            # Middle fusion: add class information before each down layer
+            u = u + y_middle.expand_as(u)
+            ul = ul + y_middle.expand_as(ul)
+            
+            # resnet block
+            u, ul = self.down_layers[i](u, ul, u_list, ul_list)
 
             # upscale (only twice)
             if i != 2:
