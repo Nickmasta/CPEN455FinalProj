@@ -52,8 +52,8 @@ class PixelCNNLayer_down(nn.Module):
 
 class PixelCNN(nn.Module):
     def __init__(self, nr_resnet=5, nr_filters=80, nr_logistic_mix=10,
-                    resnet_nonlinearity='concat_elu', input_channels=3, num_classes=4):
-        # Added the number of classes in the definition 
+                    resnet_nonlinearity='concat_elu', input_channels=3, num_classes=4, embedding_dim = 32):
+        # Added the number of classes in the definition as well as embedding dimension
         super(PixelCNN, self).__init__()
         if resnet_nonlinearity == 'concat_elu' :
             self.resnet_nonlinearity = lambda x : concat_elu(x)
@@ -61,8 +61,8 @@ class PixelCNN(nn.Module):
             raise Exception('right now only concat elu is supported as resnet nonlinearity.')
         # Adding the following information   
         self.num_classes = num_classes  # Pass this as __init__ argument
-        self.embedding_dim = nr_filters  # Match network dim
-        self.class_embedding = nn.Embedding(num_classes, self.embedding_dim) ## adding our classification information
+        self.embedding_dim = embedding_dim  # Match network dim
+        #self.class_embedding = nn.Embedding(num_classes, self.embedding_dim) ## adding our classification information
                         
         self.nr_filters = nr_filters
         self.input_channels = input_channels
@@ -70,6 +70,11 @@ class PixelCNN(nn.Module):
         self.right_shift_pad = nn.ZeroPad2d((1, 0, 0, 0))
         self.down_shift_pad  = nn.ZeroPad2d((0, 0, 1, 0))
 
+        if num_classes is not None:
+            self.class_embedding = nn.Embedding(num_classes, embedding_dim) #Like what we did in early fusion earlier
+            # Project the embedding to the number of filters for concatenation
+            self.embed_projection = nn.Linear(embedding_dim, nr_filters)
+            
         down_nr_resnet = [nr_resnet] + [nr_resnet + 1] * 2
         self.down_layers = nn.ModuleList([PixelCNNLayer_down(down_nr_resnet[i], nr_filters,
                                                 self.resnet_nonlinearity) for i in range(3)])
@@ -119,13 +124,24 @@ class PixelCNN(nn.Module):
         ###      UP PASS    ###
         x = x if sample else torch.cat((x, self.init_padding), 1)
         # My adjustments to the forward pass, the if adds the classification info
-        if class_labels  is not None:
-            h_class = self.class_embedding(class_labels).view(-1, self.embedding_dim, 1, 1)
-        else:
-            h_class = torch.zeros(x.size(0), self.embedding_dim, 1, 1).to(x.device)
+        #if class_labels  is not None:
+        #    h_class = self.class_embedding(class_labels).view(-1, self.embedding_dim, 1, 1)
+        #else:
+        #    h_class = torch.zeros(x.size(0), self.embedding_dim, 1, 1).to(x.device)
         # Adjusting sent tensors
         u_list  = [self.u_init(x) + h_class]
         ul_list = [self.ul_init[0](x) + self.ul_init[1](x) + h_class]
+        # Fuse after the first up layer
+        if self.num_classes is not None and class_labels is not None:
+            embedded_class = self.class_embedding(class_labels)
+            projected_embedding = self.embed_projection(embedded_class)
+            #Reshaping
+            b, c, h, w = u_list[-1].size()
+            reshaped_embedding = projected_embedding.view(b, self.nr_filters, 1, 1).expand(b, self.nr_filters, h, w)
+            # Update the tensors
+            u_list[-1] = torch.cat((u_list[-1], reshaped_embedding), dim=1)
+            ul_list[-1] = torch.cat((ul_list[-1], reshaped_embedding), dim=1)
+        
         for i in range(3):
             # resnet block
             u_out, ul_out = self.up_layers[i](u_list[-1], ul_list[-1])
