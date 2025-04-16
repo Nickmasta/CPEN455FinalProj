@@ -70,8 +70,8 @@ class PixelCNN(nn.Module):
         # Early fusion: embed class information to be combined with initial input
         self.class_embedding = nn.Embedding(num_classes, 1)  # Outputs 1 channel for concatenation
         
+        # Middle fusion: embeddings to be used in up and down layers
         self.middle_embedding = nn.Embedding(num_classes, embedding_dim)
-        # Add projection to match nr_filters
         self.embed_proj = nn.Conv2d(embedding_dim, nr_filters, kernel_size=1)
         
         self.right_shift_pad = nn.ZeroPad2d((1, 0, 0, 0))
@@ -130,13 +130,19 @@ class PixelCNN(nn.Module):
         y_early = self.class_embedding(y).unsqueeze(-1).unsqueeze(-1)  # [B, 1, 1, 1]
         y_early = y_early.expand(-1, -1, x.size(2), x.size(3))  # [B, 1, H, W]
         
+        # Middle fusion: prepare embeddings for later use
         y_middle = self.middle_embedding(y)  # [B, embedding_dim]
         y_middle = y_middle.view(y_middle.size(0), y_middle.size(1), 1, 1)  # [B, embedding_dim, 1, 1]
         y_middle = self.embed_proj(y_middle)  # [B, nr_filters, 1, 1]
+
+        ###      UP PASS    ###
+        x = x if sample else torch.cat((x, self.init_padding), 1)
+        # Early fusion: concatenate class information with input
+        x = torch.cat((x, y_early), dim=1)  # add as additional channel
         
-        # Now this will work:
-        u_list[-1] = u_list[-1] + y_middle.expand_as(u_list[-1])
-        ul_list[-1] = [self.ul_init[0](x) + self.ul_init[1](x)]
+        # Initialize lists
+        u_list = [self.u_init(x)]
+        ul_list = [self.ul_init[0](x) + self.ul_init[1](x)]
         
         for i in range(3):
             # Middle fusion: add class information before each up layer
@@ -159,9 +165,8 @@ class PixelCNN(nn.Module):
 
         for i in range(3):
             # Middle fusion: add class information before each down layer
-            y_middle_expanded = y_middle.expand_as(u)  # Project once and reuse
-            u = u + y_middle_expanded
-            ul = ul + y_middle.expand_as(ul)  # Or use y_middle_expanded if shapes match
+            u = u + y_middle.expand_as(u)
+            ul = ul + y_middle.expand_as(ul)
             
             # resnet block
             u, ul = self.down_layers[i](u, ul, u_list, ul_list)
