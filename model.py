@@ -135,7 +135,7 @@ class PixelCNN(nn.Module):
         y_middle = self.embed_proj(y_middle)  # [B, nr_filters, 1, 1]
         
         # Now this will work:
-        u_list[-1] = u_list[-1] + y_middle.expand_as(u_list[-1]
+        u_list[-1] = u_list[-1] + y_middle.expand_as(u_list[-1])
         ul_list[-1] = [self.ul_init[0](x) + self.ul_init[1](x)]
         
         for i in range(3):
