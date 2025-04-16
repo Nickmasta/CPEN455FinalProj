@@ -22,7 +22,7 @@ from bidict import bidict
 import csv
 import pandas as pd
 NUM_CLASSES = len(my_bidict)
-my1_bidict = bidict({'Class0': 0, 
+my_bidict = bidict({'Class0': 0, 
                     'Class1': 1,
                     'Class2': 2,
                     'Class3': 3,
@@ -123,20 +123,20 @@ if __name__ == '__main__':
                                                             mode = args.mode, 
                                                             transform=ds_transforms), 
                                              batch_size=args.batch_size, 
-                                             shuffle=True, 
+                                             shuffle=False, 
                                              **kwargs)
 
     #TODO:Begin of your code
     #You should replace the random classifier with your trained model
     #model = random_classifier(NUM_CLASSES)
-    model = PixelCNN(nr_resnet = 5, nr_filters = 100, input_channels = 3, nr_logistic_mix = 10, num_classes = 4, embedding_dim = 32)
+    model = PixelCNN(nr_resnet = 4, nr_filters = 100, input_channels = 3, nr_logistic_mix = 10, num_classes = 4, embedding_dim = 16)
     
     #End of your code
     
     model = model.to(device)
     #Attention: the path of the model is fixed to './models/conditional_pixelcnn.pth'
     #You should save your model to this path
-    model_path = os.path.join(os.path.dirname(__file__), 'models/conditional_pixelcnn.pth')
+    model_path = os.path.join(os.path.dirname(__file__), 'models/pcnn_cpen455_from_scratch_19.pth')
     if os.path.exists(model_path):
         model.load_state_dict(torch.load(model_path))
         print('model parameters loaded')
@@ -181,4 +181,4 @@ if __name__ == '__main__':
         print(f"An unexpected error occurred during CSV writing: {e}")
 
         
-       
+  
