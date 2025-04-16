@@ -1,7 +1,4 @@
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import os
 from layers import *
 
 
@@ -14,7 +11,7 @@ class PixelCNNLayer_up(nn.Module):
                                         resnet_nonlinearity, skip_connection=0)
                                             for _ in range(nr_resnet)])
 
-        # stream from pixels above and to the left
+        # stream from pixels above and to thes left
         self.ul_stream = nn.ModuleList([gated_resnet(nr_filters, down_right_shifted_conv2d,
                                         resnet_nonlinearity, skip_connection=1)
                                             for _ in range(nr_resnet)])
@@ -23,9 +20,9 @@ class PixelCNNLayer_up(nn.Module):
         u_list, ul_list = [], []
 
         for i in range(self.nr_resnet):
-            u = self.u_stream[i](u)
+            u  = self.u_stream[i](u)
             ul = self.ul_stream[i](ul, a=u)
-            u_list += [u]
+            u_list  += [u]
             ul_list += [ul]
 
         return u_list, ul_list
@@ -36,23 +33,24 @@ class PixelCNNLayer_down(nn.Module):
         super(PixelCNNLayer_down, self).__init__()
         self.nr_resnet = nr_resnet
         # stream from pixels above
-        self.u_stream = nn.ModuleList([gated_resnet(nr_filters, down_shifted_conv2d,
+        self.u_stream  = nn.ModuleList([gated_resnet(nr_filters, down_shifted_conv2d,
                                         resnet_nonlinearity, skip_connection=1)
                                             for _ in range(nr_resnet)])
 
-        # stream from pixels above and to the left
+        # stream from pixels above and to thes left
         self.ul_stream = nn.ModuleList([gated_resnet(nr_filters, down_right_shifted_conv2d,
                                         resnet_nonlinearity, skip_connection=2)
                                             for _ in range(nr_resnet)])
 
     def forward(self, u, ul, u_list, ul_list):
         for i in range(self.nr_resnet):
-            u = self.u_stream[i](u, a=u_list.pop())
+            u  = self.u_stream[i](u, a=u_list.pop())
             ul = self.ul_stream[i](ul, a=torch.cat((u, ul_list.pop()), 1))
 
         return u, ul
 
 
+# Use the original architecture that matches the saved model
 class PixelCNN(nn.Module):
     def __init__(self, nr_resnet=4, nr_filters=100, nr_logistic_mix=10,
                  resnet_nonlinearity='concat_elu', input_channels=3, num_classes=4, embedding_dim=16):
@@ -67,10 +65,8 @@ class PixelCNN(nn.Module):
         self.nr_logistic_mix = nr_logistic_mix
         self.num_classes = num_classes
         
-        # Early fusion: embed class information to be combined with initial input
-        self.class_embedding = nn.Embedding(num_classes, 1)  # Outputs 1 channel for concatenation
-        
-        # Middle fusion: embeddings to be used in up and down layers
+        # Use the original layer names that match the saved model
+        self.class_embedding = nn.Embedding(num_classes, 1)
         self.middle_embedding = nn.Embedding(num_classes, embedding_dim)
         self.embed_proj = nn.Conv2d(embedding_dim, nr_filters, kernel_size=1)
         
@@ -96,7 +92,7 @@ class PixelCNN(nn.Module):
         self.upsize_ul_stream = nn.ModuleList([down_right_shifted_deconv2d(nr_filters,
                                                     nr_filters, stride=(2, 2)) for _ in range(2)])
 
-        # Modified initial layers to include early fusion (+1 for class channel)
+        # Use input_channels + 2 to match the saved model (3 + 1 for padding + 1 for class)
         self.u_init = down_shifted_conv2d(input_channels + 1 + 1, nr_filters, filter_size=(2, 3),
                         shift_output_down=True)
 
@@ -111,10 +107,10 @@ class PixelCNN(nn.Module):
         self.nin_out = nin(nr_filters, num_mix * nr_logistic_mix)
         self.init_padding = None
 
-    def forward(self, x, y=None, sample=False):
-        # If no y provided (unconditional case), use zeros
-        if y is None:
-            y = torch.zeros(x.size(0), dtype=torch.long, device=x.device)
+    def forward(self, x, class_labels=None, sample=False):
+        # If no class_labels provided (unconditional case), use zeros
+        if class_labels is None:
+            class_labels = torch.zeros(x.size(0), dtype=torch.long, device=x.device)
         
         # similar as done in the tf repo:
         if self.init_padding is None or self.init_padding.shape != x.shape[:2] + (1,) + x.shape[2:]:
@@ -127,11 +123,11 @@ class PixelCNN(nn.Module):
 
         ### Prepare class conditioning ###
         # Early fusion: get class channel and expand to spatial dimensions
-        y_early = self.class_embedding(y).unsqueeze(-1).unsqueeze(-1)  # [B, 1, 1, 1]
+        y_early = self.class_embedding(class_labels).unsqueeze(-1).unsqueeze(-1)  # [B, 1, 1, 1]
         y_early = y_early.expand(-1, -1, x.size(2), x.size(3))  # [B, 1, H, W]
         
         # Middle fusion: prepare embeddings for later use
-        y_middle = self.middle_embedding(y)  # [B, embedding_dim]
+        y_middle = self.middle_embedding(class_labels)  # [B, embedding_dim]
         y_middle = y_middle.view(y_middle.size(0), y_middle.size(1), 1, 1)  # [B, embedding_dim, 1, 1]
         y_middle = self.embed_proj(y_middle)  # [B, nr_filters, 1, 1]
 
@@ -181,8 +177,8 @@ class PixelCNN(nn.Module):
         assert len(u_list) == len(ul_list) == 0
 
         return x_out
-
-
+    
+    
 class random_classifier(nn.Module):
     def __init__(self, NUM_CLASSES):
         super(random_classifier, self).__init__()
@@ -190,9 +186,10 @@ class random_classifier(nn.Module):
         self.fc = nn.Linear(3, NUM_CLASSES)
         print("Random classifier initialized")
         # create a folder
-        if not os.path.exists(os.path.join(os.path.dirname(__file__), 'models')):
-            os.makedirs(os.path.join(os.path.dirname(__file__), 'models'))
+        if os.path.join(os.path.dirname(__file__), 'models') not in os.listdir():
+            os.mkdir(os.path.join(os.path.dirname(__file__), 'models'))
         torch.save(self.state_dict(), os.path.join(os.path.dirname(__file__), 'models/conditional_pixelcnn.pth'))
-        
     def forward(self, x, device):
-        return torch.randint(0, self.NUM_CLASSES, (x.size(0),), device=device)
+        return torch.randint(0, self.NUM_CLASSES, (x.shape[0],)).to(device)
+    
+    
