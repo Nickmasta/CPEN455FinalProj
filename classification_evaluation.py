@@ -22,21 +22,20 @@ NUM_CLASSES = len(my_bidict)
 
 #TODO: Begin of your code
 def get_label(model, model_input, device):
-    # Write your code here, replace the random classifier with your trained model
-    # and return the predicted label, which is a tensor of shape (batch_size,)
-    # DLML Compares real data/distribution and the synthesized and we will find the loss
-    dlml = lambda real_data, gen_data : discretized_mix_logistic_loss(real_data, gen_data)  
-    answer = []
-    for img in model_input:
-        loss_list=[]
-        img_batch = img.unsqueeze(0)
-        for i in range(NUM_CLASSES):
-            label_tensor = torch.tensor([i],dtype=torch.long,device=device)
-            model_output = model(img_batch, class_labels=label_tensor, sample=False)
-            loss = dlml(img_batch, model_output)
-            loss_list.append(loss.item())
-        answer.append(np.argmin(loss_list))
-    return torch.tensor(answer).to(device)
+    model.eval()
+    with torch.no_grad():
+        dlml = lambda real_data, gen_data: discretized_mix_logistic_loss(real_data, gen_data)
+        answer = []
+        for img in model_input:
+            loss_list = []
+            img_batch = img.unsqueeze(0).to(device)
+            for i in range(NUM_CLASSES):
+                label_tensor = torch.tensor([i], dtype=torch.long, device=device)
+                model_output = model(img_batch, class_labels=label_tensor)
+                loss = dlml(img_batch, model_output)
+                loss_list.append(loss.item())
+            answer.append(np.argmin(loss_list))
+        return torch.tensor(answer, device=device)
 # End of your code
 
 def classifier(model, data_loader, device):
@@ -79,13 +78,13 @@ if __name__ == '__main__':
 
     #TODO:Begin of your code
     #You should replace the random classifier with your trained model
-    model = PixelCNN(nr_resnet = 5, nr_filters = 100, input_channels = input_channels, nr_logistic_mix = 10, num_classes = 4, embedding_dim = 32)
+    model = PixelCNN(nr_resnet = 4, nr_filters = 100, input_channels = 3, nr_logistic_mix = 10, num_classes = 4, embedding_dim=16)
     #End of your code
     
     model = model.to(device)
     #Attention: the path of the model is fixed to './models/conditional_pixelcnn.pth'
-    #You should save your model to this path
-    model_path = os.path.join(os.path.dirname(__file__), 'models/conditional_pixelcnn.pth')
+    #You should save your model to this path models/conditional_pixelcnn.pth
+    model_path = os.path.join(os.path.dirname(__file__), 'models/pcnn_cpen455_from_scratch_99.pth')
     if os.path.exists(model_path):
         model.load_state_dict(torch.load(model_path))
         print('model parameters loaded')
