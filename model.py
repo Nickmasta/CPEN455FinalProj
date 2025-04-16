@@ -1,6 +1,11 @@
+import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from torch.autograd import Variable
 from layers import *
+from dataset import my_bidict
 
+NUM_CLASSES = len(my_bidict)
 
 class PixelCNNLayer_up(nn.Module):
     def __init__(self, nr_resnet, nr_filters, resnet_nonlinearity):
@@ -51,37 +56,31 @@ class PixelCNNLayer_down(nn.Module):
 
 
 class PixelCNN(nn.Module):
-    def __init__(self, nr_resnet=3, nr_filters=80, nr_logistic_mix=10, resnet_nonlinearity='concat_elu', input_channels=3, num_classes=4, embedding_dim=16):
-        # Added the number of classes in the definition as well as embedding dimension
+    def __init__(self, nr_resnet=4, nr_filters=100, nr_logistic_mix=10,
+                    resnet_nonlinearity='concat_elu', input_channels=3, embedding_dim=16):
         super(PixelCNN, self).__init__()
         if resnet_nonlinearity == 'concat_elu' :
             self.resnet_nonlinearity = lambda x : concat_elu(x)
         else :
             raise Exception('right now only concat elu is supported as resnet nonlinearity.')
-        # Adding the following information   
-        self.num_classes = num_classes  # Pass this as __init__ argument
-        self.embedding_dim = embedding_dim  # Match network dim
-        #self.class_embedding = nn.Embedding(num_classes, self.embedding_dim) ## adding our classification information
-                        
+
         self.nr_filters = nr_filters
         self.input_channels = input_channels
         self.nr_logistic_mix = nr_logistic_mix
         self.right_shift_pad = nn.ZeroPad2d((1, 0, 0, 0))
         self.down_shift_pad  = nn.ZeroPad2d((0, 0, 1, 0))
 
-        #if num_classes is not None:
-        #    self.class_embedding = nn.Embedding(num_classes, embedding_dim) #Like what we did in early fusion earlier
-            # Project the embedding to the number of filters for concatenation
-        #    self.embed_projection = nn.Linear(embedding_dim, nr_filters)
         # --- Start: Added for Conditioning ---
-        self.label_embedding = nn.Embedding(num_classes, self.embedding_dim)
+        self.num_classes = NUM_CLASSES
+        self.embedding_dim = embedding_dim
+        self.label_embedding = nn.Embedding(self.num_classes, self.embedding_dim)
         # Add a projection layer if embedding_dim is different from nr_filters
         if self.embedding_dim != self.nr_filters:
              self.embedding_projection = nn.Linear(self.embedding_dim, self.nr_filters)
         else:
              self.embedding_projection = nn.Identity() # Use Identity if dims match
         # --- End: Added for Conditioning ---
-            
+        
         down_nr_resnet = [nr_resnet] + [nr_resnet + 1] * 2
         self.down_layers = nn.ModuleList([PixelCNNLayer_down(down_nr_resnet[i], nr_filters,
                                                 self.resnet_nonlinearity) for i in range(3)])
@@ -115,7 +114,7 @@ class PixelCNN(nn.Module):
 
 
     def forward(self, x, class_labels=None, sample=False):
-        # Handle padding initialization
+        # Handle padding initialization - fixed to match WF version
         if self.init_padding is None or self.init_padding.shape != x.shape[:2] + (1,) + x.shape[2:]:
             xs = [int(y) for y in x.size()]
             padding = torch.ones(xs[0], 1, xs[2], xs[3], device=x.device)
@@ -191,5 +190,3 @@ class random_classifier(nn.Module):
         torch.save(self.state_dict(), os.path.join(os.path.dirname(__file__), 'models/conditional_pixelcnn.pth'))
     def forward(self, x, device):
         return torch.randint(0, self.NUM_CLASSES, (x.shape[0],)).to(device)
-    
-    
