@@ -146,7 +146,48 @@ class PixelCNN(nn.Module):
 
         x_out = self.nin_out(F.elu(ul))
         return x_out
-    
+        
+def sample(self, batch_size, obs_shape, class_labels=None):
+        """Generate samples from the model"""
+        channels, height, width = obs_shape
+        samples = torch.zeros(batch_size, channels, height, width).to(next(self.parameters()).device)
+        
+        # Initialize with zeros (or random noise if preferred)
+        samples.fill_(0)
+        
+        # Add initial padding channel
+        padding = torch.ones(batch_size, 1, height, width).to(samples.device)
+        samples = torch.cat((samples, padding), dim=1)
+        
+        # Prepare class conditioning if provided
+        if class_labels is not None:
+            h_class = self.class_embedding(class_labels)
+            h_class = self.embed_proj(h_class.unsqueeze(-1).unsqueeze(-1))
+            h_class = h_class.expand(-1, -1, height, width)
+        else:
+            h_class = torch.zeros(batch_size, self.nr_filters, height, width).to(samples.device)
+        
+        # Concatenate class information
+        samples = torch.cat((samples, h_class), dim=1)
+        
+        # Pixel-by-pixel generation
+        with torch.no_grad():
+            for i in range(height):
+                for j in range(width):
+                    for c in range(channels):
+                        # Get model output
+                        out = self.forward(samples[:, :channels, :, :], 
+                                         class_labels=class_labels, 
+                                         sample=True)
+                        
+                        # Sample from output distribution (modify based on your output format)
+                        out_sample = torch.argmax(out[:, :, i, j], dim=1)
+                        samples[:, c, i, j] = out_sample
+                        
+                        # Update the input with the new sample
+                        if j < width - 1:
+                            samples = samples.clone()
+        return samples[:, :channels, :, :]    
     
 class random_classifier(nn.Module):
     def __init__(self, NUM_CLASSES):
