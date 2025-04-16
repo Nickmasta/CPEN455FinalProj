@@ -31,6 +31,7 @@ def get_label(model, model_input, device):
             img_batch = img.unsqueeze(0).to(device)
             for i in range(NUM_CLASSES):
                 label_tensor = torch.tensor([i], dtype=torch.long, device=device)
+                # Use class_labels as the parameter name to match the model's forward method
                 model_output = model(img_batch, class_labels=label_tensor)
                 loss = dlml(img_batch, model_output)
                 loss_list.append(loss.item())
@@ -78,7 +79,7 @@ if __name__ == '__main__':
 
     #TODO:Begin of your code
     #You should replace the random classifier with your trained model
-    model = PixelCNN(nr_resnet = 4, nr_filters = 100, input_channels = 3, nr_logistic_mix = 10, num_classes = 4, embedding_dim=16)
+    model = PixelCNN(nr_resnet = 4, nr_filters = 100, input_channels = 3, nr_logistic_mix = 10, embedding_dim=16)
     #End of your code
     
     model = model.to(device)
